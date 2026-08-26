@@ -1,0 +1,71 @@
+"""
+Generates synthetic data in the exact schema of MovieLens (ratings.csv, movies.csv)
+so the rest of the pipeline can be developed/tested without a network connection.
+
+TO USE REAL DATA INSTEAD:
+1. Download ml-latest-small.zip from https://grouplens.org/datasets/movielens/
+2. Unzip it, and point DATA_DIR in main.py to that folder.
+   It already contains ratings.csv and movies.csv in this same schema,
+   so no other code changes are needed.
+"""
+import numpy as np
+import pandas as pd
+
+np.random.seed(42)
+
+N_USERS = 200
+N_MOVIES = 150
+N_RATINGS = 8000
+
+GENRES = ["Action", "Comedy", "Drama", "Horror", "Romance", "Sci-Fi",
+          "Thriller", "Animation", "Documentary", "Fantasy"]
+
+def generate_movies(n_movies):
+    rows = []
+    for movie_id in range(1, n_movies + 1):
+        n_genres = np.random.randint(1, 3)
+        genres = np.random.choice(GENRES, size=n_genres, replace=False)
+        rows.append({
+            "movieId": movie_id,
+            "title": f"Movie {movie_id} ({np.random.randint(1970, 2024)})",
+            "genres": "|".join(genres)
+        })
+    return pd.DataFrame(rows)
+
+def generate_ratings(n_users, n_movies, n_ratings):
+    # Give users latent "taste" vectors and movies latent "trait" vectors
+    # so ratings aren't pure noise -- this makes collaborative filtering
+    # actually have signal to learn from.
+    n_factors = 5
+    user_factors = np.random.normal(0, 1, (n_users + 1, n_factors))
+    movie_factors = np.random.normal(0, 1, (n_movies + 1, n_factors))
+
+    user_ids = np.random.randint(1, n_users + 1, n_ratings)
+    movie_ids = np.random.randint(1, n_movies + 1, n_ratings)
+
+    raw_scores = np.sum(user_factors[user_ids] * movie_factors[movie_ids], axis=1)
+    # scale to 0.5-5.0 rating range (MovieLens uses half-star increments)
+    scaled = 2.5 + raw_scores * 0.6 + np.random.normal(0, 0.4, n_ratings)
+    ratings = np.clip(np.round(scaled * 2) / 2, 0.5, 5.0)
+
+    timestamps = np.random.randint(1_000_000_000, 1_700_000_000, n_ratings)
+
+    df = pd.DataFrame({
+        "userId": user_ids,
+        "movieId": movie_ids,
+        "rating": ratings,
+        "timestamp": timestamps
+    }).drop_duplicates(subset=["userId", "movieId"])
+
+    return df
+
+if __name__ == "__main__":
+    movies = generate_movies(N_MOVIES)
+    ratings = generate_ratings(N_USERS, N_MOVIES, N_RATINGS)
+
+    movies.to_csv("movies.csv", index=False)
+    ratings.to_csv("ratings.csv", index=False)
+
+    print(f"Generated {len(movies)} movies and {len(ratings)} ratings")
+    print(f"Ratings per user: mean={ratings.groupby('userId').size().mean():.1f}")
+    print(f"Ratings per movie: mean={ratings.groupby('movieId').size().mean():.1f}")
