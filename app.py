@@ -11,13 +11,15 @@ def load_data():
     try:
         ratings = pd.read_csv("sample_data/ratings.csv")
         movies = pd.read_csv("sample_data/movies.csv")
+        # remove duplicates that cause pivot error
+        ratings = ratings.drop_duplicates(subset=['userId','movieId'])
         return ratings, movies
     except:
         ratings = pd.DataFrame({
             'userId': np.random.randint(1,100, 500),
             'movieId': np.random.randint(1,50, 500),
             'rating': np.random.randint(1,6, 500)
-        })
+        }).drop_duplicates(subset=['userId','movieId'])
         movies = pd.DataFrame({
             'movieId': range(1,51),
             'title': [f"Movie {i}" for i in range(1,51)]
@@ -25,22 +27,19 @@ def load_data():
         return ratings, movies
 
 ratings_df, movies_df = load_data()
-st.success(f"Loaded {len(movies_df)} movies")
+st.success(f"Loaded {len(movies_df)} movies and {len(ratings_df)} ratings")
 
 user_id = st.number_input("Enter User ID", min_value=1, max_value=99, value=1)
 
 if st.button("Get Recommendations"):
-    # Simple SVD logic that always works
-    user_movie = ratings_df.pivot(index='userId', columns='movieId', values='rating').fillna(0)
-    if user_id not in user_movie.index:
-        st.warning("New user - showing popular movies")
-        recs = movies_df.head(10)
-    else:
-        # Recommend movies user hasn't rated
-        user_ratings = user_movie.loc[user_id]
-        unseen = user_ratings[user_ratings == 0].index.tolist()
-        rec_movies = movies_df[movies_df['movieId'].isin(unseen)].head(10)
-        recs = rec_movies
+    rated_by_user = ratings_df[ratings_df['userId']==user_id]['movieId'].tolist()
+    unseen_movies = movies_df[~movies_df['movieId'].isin(rated_by_user)]
     
-    st.write(f"Top 10 Recommendations for User {user_id}:")
-    st.dataframe(recs)
+    if unseen_movies.empty:
+        st.write("You rated everything! Showing popular movies:")
+        st.dataframe(movies_df.head(10))
+    else:
+        st.write(f"Top 10 Recommendations for User {user_id}:")
+        st.dataframe(unseen_movies.head(10))
+    
+    st.balloons()
